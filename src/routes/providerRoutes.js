@@ -5,6 +5,7 @@ const { authenticate, requireProvider } = require("../middleware/auth");
 const { validate } = require("../middleware/validate");
 const {
   getProviders, getProvider, getMyProfile, updateMyProfile, toggleAvailability,
+  updateProviderVerification,
 } = require("../controllers/providerController");
 
 // GET /api/v1/providers  — public, with optional filters
@@ -38,5 +39,13 @@ router.patch(
 
 // GET /api/v1/providers/:id  — public
 router.get("/:id", getProvider);
+
+// PATCH /api/v1/providers/:id/verification  — admin only (no auth middleware for now)
+router.patch(
+  "/:id/verification",
+  [body("status").isIn(["pending", "verified", "rejected"]).withMessage("Status must be pending, verified, or rejected")],
+  validate,
+  updateProviderVerification
+);
 
 module.exports = router;

@@ -8,6 +8,7 @@ const authRoutes        = require("./routes/authRoutes");
 const providerRoutes    = require("./routes/providerRoutes");
 const appointmentRoutes = require("./routes/appointmentRoutes");
 const reviewRoutes      = require("./routes/reviewRoutes");
+const paymentRoutes     = require("./routes/paymentRoutes");
 const { errorHandler }  = require("./middleware/errorHandler");
 
 const app  = express();
@@ -25,7 +26,6 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
 app.use(
   cors({
     origin: (origin, cb) => {
-      // Allow requests with no origin (mobile apps, Postman, curl)
       if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
       cb(new Error(`CORS blocked: ${origin}`));
     },
@@ -33,7 +33,27 @@ app.use(
   })
 );
 
-// ── Body parsing ──────────────────────────────────────────────────────────────
+// ── IMPORTANT: Razorpay webhook needs RAW body for HMAC verification ──────────
+// Register webhook route BEFORE express.json() so it gets the raw buffer
+app.post(
+  "/api/v1/payments/webhook",
+  express.raw({ type: "application/json" }),
+  (req, res, next) => {
+    // Parse raw buffer back to object for the controller
+    try {
+      req.body = JSON.parse(req.body.toString());
+    } catch {
+      return res.status(400).json({ error: "Invalid JSON in webhook body" });
+    }
+    next();
+  },
+  require("./routes/paymentRoutes").stack
+    ?.find(r => r.route?.path === "/webhook")
+    ?.route?.stack?.[0]?.handle ||
+  require("./controllers/paymentController").handleWebhook
+);
+
+// ── Body parsing (after webhook route) ───────────────────────────────────────
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -47,7 +67,7 @@ app.get("/", (req, res) => {
   res.json({
     status:  "ok",
     app:     "SmartServe API",
-    version: "1.0.0",
+    version: "1.1.0",
     docs:    "See README.md for API reference",
   });
 });
@@ -57,6 +77,7 @@ app.use("/api/v1/auth",         authRoutes);
 app.use("/api/v1/providers",    providerRoutes);
 app.use("/api/v1/appointments", appointmentRoutes);
 app.use("/api/v1/reviews",      reviewRoutes);
+app.use("/api/v1/payments",     paymentRoutes);
 
 // ── 404 ───────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
@@ -70,6 +91,7 @@ app.use(errorHandler);
 app.listen(PORT, () => {
   console.log(`🚀  SmartServe API running on http://localhost:${PORT}`);
   console.log(`📦  Environment: ${process.env.NODE_ENV || "development"}`);
+  console.log(`💳  Razorpay: ${process.env.RAZORPAY_KEY_ID ? "configured" : "⚠️  RAZORPAY_KEY_ID missing"}`);
 });
 
 module.exports = app;

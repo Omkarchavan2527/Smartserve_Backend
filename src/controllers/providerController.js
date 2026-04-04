@@ -1,6 +1,6 @@
 const {
   listProviders, getProviderById, getProviderByUserId,
-  updateProviderProfile, setProviderAvailability,
+  updateProviderProfile, setProviderAvailability, updateVerificationStatus,
 } = require("../models/userModel");
 
 // ── GET /api/v1/providers ─────────────────────────────────────────────────────
@@ -10,6 +10,7 @@ const getProviders = async (req, res, next) => {
       category, city,
       available_only: availableOnly = "false",
       min_rating: minRating = "0",
+      verification_status: verificationStatus = "verified",
       skip = "0", limit = "20",
     } = req.query;
 
@@ -18,6 +19,7 @@ const getProviders = async (req, res, next) => {
       city,
       availableOnly: availableOnly === "true",
       minRating: parseFloat(minRating),
+      verificationStatus,
       skip: parseInt(skip),
       limit: Math.min(parseInt(limit), 100),
     });
@@ -65,4 +67,27 @@ const toggleAvailability = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-module.exports = { getProviders, getProvider, getMyProfile, updateMyProfile, toggleAvailability };
+// ── PATCH /api/v1/providers/:id/verification ──────────────────────────────────
+const updateProviderVerification = async (req, res, next) => {
+  try {
+    const { status } = req.body;
+    const providerId = parseInt(req.params.id);
+
+    if (!status || !['pending', 'verified', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: "Invalid status. Must be 'pending', 'verified', or 'rejected'" });
+    }
+
+    const result = await updateVerificationStatus(providerId, status);
+    if (!result) {
+      return res.status(404).json({ error: "Provider not found" });
+    }
+
+    res.json({
+      id: result.id,
+      verification_status: result.verification_status,
+      message: `Provider verification status updated to ${status}`,
+    });
+  } catch (err) { next(err); }
+};
+
+module.exports = { getProviders, getProvider, getMyProfile, updateMyProfile, toggleAvailability, updateProviderVerification };

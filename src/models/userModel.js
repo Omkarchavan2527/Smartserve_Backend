@@ -84,10 +84,20 @@ const getProviderById = async (providerId) => {
   return res.rows[0] || null;
 };
 
-const listProviders = async ({ category, city, availableOnly, minRating, skip, limit }) => {
-  let conditions = ["pp.verification_status = 'verified'", "u.is_active = TRUE"];
+const listProviders = async ({ category, city, availableOnly, minRating, skip, limit, verificationStatus = 'verified' }) => {
+  let conditions = ["u.is_active = TRUE"];
   let params = [];
   let idx = 1;
+
+  // Handle verification status filtering
+  if (verificationStatus === 'all') {
+    // Include all verification statuses
+  } else if (verificationStatus === 'verified') {
+    conditions.push(`pp.verification_status = 'verified'`);
+  } else {
+    conditions.push(`pp.verification_status = $${idx++}`);
+    params.push(verificationStatus);
+  }
 
   if (category) { conditions.push(`pp.service_category ILIKE $${idx++}`); params.push(`%${category}%`); }
   if (city)     { conditions.push(`u.city ILIKE $${idx++}`);              params.push(`%${city}%`); }
@@ -165,8 +175,25 @@ const updateProviderRating = async (providerId, rating) => {
   );
 };
 
+const updateVerificationStatus = async (providerId, status) => {
+  const validStatuses = ['pending', 'verified', 'rejected'];
+  if (!validStatuses.includes(status)) {
+    throw new Error('Invalid verification status');
+  }
+
+  const res = await query(
+    `UPDATE provider_profiles
+     SET verification_status = $1, updated_at = NOW()
+     WHERE id = $2
+     RETURNING id, verification_status`,
+    [status, providerId]
+  );
+  return res.rows[0] || null;
+};
+
 module.exports = {
   findUserByEmail, findUserById, createUser, emailExists, phoneExists,
   createProviderProfile, getProviderByUserId, getProviderById,
   listProviders, updateProviderProfile, setProviderAvailability, updateProviderRating,
+  updateVerificationStatus,
 };
