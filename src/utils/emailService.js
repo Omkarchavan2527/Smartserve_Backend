@@ -134,7 +134,7 @@ async function sendBookingEmails({ appointment, customerEmail, customerName, pro
           ⏳ <strong>Awaiting Confirmation</strong> — ${providerName} will respond within 30 minutes.
         </p>
       </div>
-      ${cta("View My Bookings", "https://smartserve.app/bookings")}
+      ${cta("View My Bookings", "https://smart-serve-rho.vercel.app/")}
     `),
   });
 
