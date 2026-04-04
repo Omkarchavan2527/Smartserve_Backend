@@ -2,9 +2,17 @@ const {
   createAppointment, getAppointmentById, listAppointments,
   updateAppointmentStatus, incrementProviderJobs, TRANSITIONS,
 } = require("../models/appointmentModel");
-const { getProviderByUserId,getProviderById } = require("../models/userModel");
+const { getProviderByUserId, getProviderById } = require("../models/userModel");
 const { query } = require("../config/db");
-const { sendEmail } = require("../utils/emailService");
+const {
+  sendBookingEmails,
+  sendAcceptedEmails,
+  sendRejectedEmail,
+  sendOngoingEmail,
+  sendCompletedEmails,
+  sendCancelledEmails,
+} = require("../utils/emailService");
+
 // ── POST /api/v1/appointments ─────────────────────────────────────────────────
 const bookAppointment = async (req, res, next) => {
   try {
@@ -13,10 +21,7 @@ const bookAppointment = async (req, res, next) => {
       location, area, scheduledDate,
       scheduledStart, scheduledEnd, agreedPrice,
     } = req.body;
-    console.log("✅ Booking appointment with data:", req.body);
-    process.stdout.write(`📝 Appointment data received at ${new Date().toISOString()}\n`);
-    
-    // Verify provider is verified + available
+
     const provCheck = await query(
       `SELECT id FROM provider_profiles
        WHERE id = $1 AND is_available = TRUE AND verification_status = 'verified'`,
@@ -34,56 +39,16 @@ const bookAppointment = async (req, res, next) => {
       agreedPrice,
     });
 
-    // Send booking confirmation email to customer
-    try {
-      await sendEmail({
-        to: req.user.email,
-        subject: "Appointment Booking Confirmed",
-        template: "appointmentBooked",
-        data: {
-          customerName: req.user.full_name,
-          serviceName,
-          scheduledDate,
-          scheduledStart,
-          scheduledEnd,
-          location,
-          agreedPrice,
-          appointmentId: appointment.id,
-        },
-      }).then(() => {
-        console.log("Booking confirmation email sent successfully");
-      }).catch((emailErr) => {
-        console.error("Failed to send booking confirmation email:", emailErr);
-      });
-    } catch (emailErr) {
-      console.error("Failed to send booking confirmation email:", emailErr);
-      // Don't fail the booking if email fails
-    }
+    const provider = await getProviderById(providerId);
 
-     const provider = await getProviderById(providerId);
-
-     try {
-      await sendEmail({
-        to: provider.email,
-        subject: "New Appointment Booking",
-        template: "newAppointmentProvider",
-        data: {
-          providerName: provider.full_name,
-          customerName: req.user.full_name,
-          serviceName,
-          scheduledDate,
-          scheduledStart,
-          scheduledEnd,
-          location,
-          area,
-          agreedPrice,
-          appointmentId: appointment.id,
-        },
-      });
-      console.log("New booking notification email sent to provider");
-    } catch (emailErr) {
-      console.error("Failed to send booking notification email to provider:", emailErr);
-    }
+    // Fire-and-forget — never block the response for emails
+    sendBookingEmails({
+      appointment,
+      customerEmail: req.user.email,
+      customerName:  req.user.full_name,
+      providerEmail: provider.email,
+      providerName:  provider.full_name,
+    }).catch((err) => console.error("sendBookingEmails failed:", err));
 
     res.status(201).json(appointment);
   } catch (err) { next(err); }
@@ -121,7 +86,7 @@ const getAppointment = async (req, res, next) => {
     const appointment = await getAppointmentById(parseInt(req.params.id));
     if (!appointment) return res.status(404).json({ error: "Appointment not found" });
 
-    checkOwnership(appointment, req.user, res);
+    if (!checkOwnership(appointment, req.user, res)) return;
     res.json(appointment);
   } catch (err) { next(err); }
 };
@@ -157,51 +122,49 @@ const updateStatus = async (req, res, next) => {
 
     const updated = await updateAppointmentStatus(appointment.id, newStatus, note);
 
-    // Get customer details for email
+    // Fetch customer + provider for emails
     const customerResult = await query(
       `SELECT email, full_name FROM users WHERE id = $1`,
       [appointment.customer_id]
     );
     const customer = customerResult.rows[0];
+    const provider = await getProviderById(appointment.provider_id);
 
-    // Send email notifications based on status change
-    try {
-      if (newStatus === "accepted") {
-        // Email customer when appointment is accepted
-        await sendEmail({
-          to: customer.email,
-          subject: "Appointment Accepted",
-          template: "appointmentAccepted",
-          data: {
-            customerName: customer.full_name,
-            serviceName: appointment.service_name,
-            scheduledDate: appointment.scheduled_date,
-            scheduledStart: appointment.scheduled_start,
-            scheduledEnd: appointment.scheduled_end,
-            location: appointment.location,
-            appointmentId: appointment.id,
-            note,
-          },
-        });
-      } else if (newStatus === "completed") {
-        // Email customer when appointment is completed
-        await sendEmail({
-          to: customer.email,
-          subject: "Appointment Completed",
-          template: "appointmentCompleted",
-          data: {
-            customerName: customer.full_name,
-            serviceName: appointment.service_name,
-            scheduledDate: appointment.scheduled_date,
-            agreedPrice: appointment.agreed_price,
-            appointmentId: appointment.id,
-            note,
-          },
-        });
-      }
-    } catch (emailErr) {
-      console.error("Failed to send status update email:", emailErr);
-      // Don't fail the status update if email fails
+    // Send the right email for each transition
+    const emailMap = {
+      accepted:  () => sendAcceptedEmails({
+        appointment,
+        customerEmail: customer.email, customerName: customer.full_name,
+        providerEmail: provider.email, providerName: provider.full_name,
+      }),
+      rejected:  () => sendRejectedEmail({
+        appointment,
+        customerEmail: customer.email, customerName: customer.full_name,
+        providerName: provider.full_name,
+        rejectionNote: note,
+      }),
+      ongoing:   () => sendOngoingEmail({
+        appointment,
+        customerEmail: customer.email, customerName: customer.full_name,
+        providerName: provider.full_name,
+      }),
+      completed: () => sendCompletedEmails({
+        appointment,
+        customerEmail: customer.email, customerName: customer.full_name,
+        providerEmail: provider.email, providerName: provider.full_name,
+        completionNote: note,
+      }),
+      cancelled: () => sendCancelledEmails({
+        appointment,
+        customerEmail: customer.email, customerName: customer.full_name,
+        providerEmail: provider.email, providerName: provider.full_name,
+      }),
+    };
+
+    if (emailMap[newStatus]) {
+      emailMap[newStatus]().catch((err) =>
+        console.error(`Email failed for status '${newStatus}':`, err)
+      );
     }
 
     // Increment provider job count on completion
@@ -228,7 +191,21 @@ const cancelAppointment = async (req, res, next) => {
       });
     }
 
+    const customerResult = await query(
+      `SELECT email, full_name FROM users WHERE id = $1`,
+      [appointment.customer_id]
+    );
+    const customer = customerResult.rows[0];
+    const provider = await getProviderById(appointment.provider_id);
+
     await updateAppointmentStatus(appointment.id, "cancelled", null);
+
+    sendCancelledEmails({
+      appointment,
+      customerEmail: customer.email, customerName: customer.full_name,
+      providerEmail: provider.email, providerName: provider.full_name,
+    }).catch((err) => console.error("sendCancelledEmails failed:", err));
+
     res.status(204).send();
   } catch (err) { next(err); }
 };
