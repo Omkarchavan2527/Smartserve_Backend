@@ -14,10 +14,15 @@ const {
 const { getAppointmentById } = require("../models/appointmentModel");
 
 // ─── Razorpay instance ────────────────────────────────────────────────────────
-const razorpay = new Razorpay({
-  key_id:     process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+let razorpay = null;
+if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+  razorpay = new Razorpay({
+    key_id:     process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
+  });
+} else {
+  console.warn("⚠️  Razorpay keys are missing — set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in environment variables");
+}
 
 // ─── POST /api/v1/payments/create-order ──────────────────────────────────────
 // Called right after BookingModal confirms — creates Razorpay order
@@ -46,6 +51,10 @@ const createOrder = async (req, res, next) => {
 
     // Convert ₹ to paise (Razorpay works in smallest currency unit)
     const amountPaise = Math.round(appointment.agreed_price * 100);
+
+    if (!razorpay) {
+      return res.status(500).json({ error: "Payment service is not configured" });
+    }
 
     // Create Razorpay order
     const order = await razorpay.orders.create({
@@ -249,6 +258,10 @@ const initiateRefund = async (req, res, next) => {
     const payment = await getPaymentByAppointment(appointmentId);
     if (!payment) return res.status(404).json({ error: "No payment found for this appointment" });
     if (payment.status !== "paid") return res.status(400).json({ error: "Only paid appointments can be refunded" });
+
+    if (!razorpay) {
+      return res.status(500).json({ error: "Payment service is not configured" });
+    }
 
     // Call Razorpay refund API
     const refund = await razorpay.payments.refund(payment.razorpay_payment_id, {
