@@ -1,3 +1,4 @@
+require("dotenv").config();
 // ─── emailService.js ──────────────────────────────────────────────────────────
 // Uses Resend (HTTPS API) instead of Nodemailer/SMTP.
 // Render.com blocks outbound SMTP (port 587/465) on free tier.
@@ -15,17 +16,24 @@
 
 const { Resend } = require("resend");
 
-let _resend = null;
-function getResend() {
-  if (!_resend) {
-    if (!process.env.RESEND_API_KEY) {
-      console.warn("⚠️  RESEND_API_KEY not set — emails will be logged only");
+//─── Replace Resend with Brevo ─────────────────────────────────────────────
+// const Brevo = require("@getbrevo/brevo");
+const { TransactionalEmailsApi, SendSmtpEmail, ApiClient } = require("@getbrevo/brevo");
+// ...
+let _client = null;
+function getBrevoClient() {
+  if (!_client) {
+    if (!process.env.BREVO_API_KEY) {
+      console.warn("⚠️  BREVO_API_KEY not set — emails will be logged only");
       return null;
     }
-    _resend = new Resend(process.env.RESEND_API_KEY);
-    console.log("✅  Resend email client ready");
+   
+const defaultClient = ApiClient.instance;
+defaultClient.authentications["api-key"].apiKey = process.env.BREVO_API_KEY;
+const apiInstance = new TransactionalEmailsApi();
+    console.log("✅  Brevo email client ready");
   }
-  return _resend;
+  return _client;
 }
 
 const ORANGE   = "#F97316";
@@ -94,28 +102,68 @@ function cta(label, href) {
       ${label}
     </a>
   </div>`;
-}
+}async function sendEmail({ to, subject, html }) {
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "api-key": process.env.BREVO_API_KEY,
+    },
+    body: JSON.stringify({
+      sender: {
+        name: process.env.EMAIL_FROM_NAME || "SmartServe",
+        email: process.env.EMAIL_FROM_ADDRESS,
+      },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+    }),
+  });
 
+  const data = await response.json();
+  if (!response.ok) {
+    console.error(`❌ Brevo error → ${to}:`, data.message);
+  } else {
+    console.log(`✉️  Email sent → ${to} (ID: ${data.messageId})`);
+  }
+}
 // ─── Core sender ──────────────────────────────────────────────────────────────
-async function sendEmail({ to, subject, html }) {
-  const client = getResend();
-  if (!client) {
-    console.log(`[Email skipped] To: ${to} | Subject: ${subject}`);
-    return;
-  }
-  try {
-    const from = process.env.EMAIL_FROM || "SmartServe <onboarding@resend.dev>";
-    const { data, error } = await client.emails.send({ from, to, subject, html });
-    if (error) {
-      console.error(`❌ Resend error to ${to}:`, error.message || JSON.stringify(error));
-      return;
-    }
-    console.log(`✉️  Email sent → ${to} (ID: ${data?.id})`);
-  } catch (err) {
-    console.error(`❌ Email failed → ${to}:`, err.message);
-  }
-}
+// async function sendEmail({ to, subject, html }) {
+//   console.log("KEY CHECK:", JSON.stringify(process.env.BREVO_API_KEY)); // ADD THIS
+  
+//   if (!process.env.BREVO_API_KEY) {
+//     console.log(`[Email skipped] To: ${to} | Subject: ${subject}`);
+//     return;
+//   }
+//   try {
+//     console.log(BRAVO_API_KEY);
+//     const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+//       method: "POST",
+//       headers: {
+//         "Content-Type": "application/json",
+//         "api-key": process.env.BREVO_API_KEY,
+//       },
+//       body: JSON.stringify({
+//         sender: {
+//           name:  process.env.EMAIL_FROM_NAME  || "SmartServe",
+//           email: process.env.EMAIL_FROM_ADDRESS,
+//         },
+//         to: [{ email: to }],
+//         subject,
+//         htmlContent: html,
+//       }),
+//     });
 
+//     const data = await response.json();
+//     if (!response.ok) {
+//       console.error(`❌ Brevo error → ${to}:`, data.message || JSON.stringify(data));
+//     } else {
+//       console.log(`✉️  Email sent → ${to} (ID: ${data.messageId})`);
+//     }
+//   } catch (err) {
+//     console.error(`❌ Email failed → ${to}:`, err.message);
+//   }
+// }
 // ═══════════════════════════════════════════════════════════════════════════════
 // 1. Customer books
 // ═══════════════════════════════════════════════════════════════════════════════
