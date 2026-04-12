@@ -31,6 +31,7 @@ const getAppointmentById = async (id) => {
   const res = await query(
     `SELECT a.*,
             u.full_name  AS customer_name,
+             u.phone      AS customer_phone,
             pp.service_name AS provider_service_name
      FROM appointments a
      JOIN users u           ON u.id  = a.customer_id
@@ -64,6 +65,7 @@ const listAppointments = async ({ role, userId, providerId, status, skip, limit 
   const res = await query(
     `SELECT a.*,
             u.full_name       AS customer_name,
+            u.phone           AS customer_phone,
             pp.service_name   AS provider_service_name
      FROM appointments a
      JOIN users u             ON u.id  = a.customer_id
