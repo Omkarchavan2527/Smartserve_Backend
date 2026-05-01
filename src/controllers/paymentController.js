@@ -11,6 +11,15 @@ const {
   updateAppointmentPaymentStatus,
   markPaymentRefunded,
 } = require("../models/paymentModel");
+
+const {
+  sendBookingEmails,
+  sendAcceptedEmails,
+  sendRejectedEmail,
+  sendOngoingEmail,
+  sendCompletedEmails,
+  sendCancelledEmails,
+} = require("../utils/emailService
 const { getAppointmentById } = require("../models/appointmentModel");
 
 // ─── Razorpay instance ────────────────────────────────────────────────────────
@@ -134,7 +143,7 @@ const verifyPayment = async (req, res, next) => {
     const details = await getPaymentByAppointment(payment.appointment_id);
     if (details) {
       // Send receipt email — non-blocking
-      const { sendPaymentReceiptEmail } = require("../emailService");
+      
       sendPaymentReceiptEmail({
         customerEmail: details.customer_email,
         customerName:  details.customer_name,
