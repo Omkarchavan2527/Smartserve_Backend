@@ -19,6 +19,7 @@ const {
   sendOngoingEmail,
   sendCompletedEmails,
   sendCancelledEmails,
+  sendPaymentReceiptEmail,
 } = require("../utils/emailService");
 const { getAppointmentById } = require("../models/appointmentModel");
 
