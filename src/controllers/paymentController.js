@@ -19,7 +19,7 @@ const {
   sendOngoingEmail,
   sendCompletedEmails,
   sendCancelledEmails,
-} = require("../utils/emailService
+} = require("../utils/emailService");
 const { getAppointmentById } = require("../models/appointmentModel");
 
 // ─── Razorpay instance ────────────────────────────────────────────────────────
