@@ -10,6 +10,8 @@ const appointmentRoutes = require("./routes/appointmentRoutes");
 const reviewRoutes      = require("./routes/reviewRoutes");
 const paymentRoutes     = require("./routes/paymentRoutes");
 const { errorHandler }  = require("./middleware/errorHandler");
+const payoutRoutes     = require("./routes/payoutRoutes");
+
 
 const app  = express();
 const PORT = process.env.PORT || 8000;
@@ -78,6 +80,7 @@ app.use("/api/v1/providers",    providerRoutes);
 app.use("/api/v1/appointments", appointmentRoutes);
 app.use("/api/v1/reviews",      reviewRoutes);
 app.use("/api/v1/payments",     paymentRoutes);
+app.use("/api/v1/payouts",     payoutRoutes);
 
 // ── 404 ───────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
